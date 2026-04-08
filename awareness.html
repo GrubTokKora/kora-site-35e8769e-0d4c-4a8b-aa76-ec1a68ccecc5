@@ -14,9 +14,21 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@400&family=Roboto:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+  <script src="https://www.google.com/recaptcha/api.js?render=explicit&onload=onAwarenessRecaptchaLoad" async defer></script>
   <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
+  <script>
+    (function () {
+      var existingCfg = window.KORA_CONFIG || window.KORA_SITE_CONFIG || {};
+      window.KORA_CONFIG = {
+        apiBaseUrl: existingCfg.apiBaseUrl || "https://kora-agent.quseappdev.com",
+        businessId: existingCfg.businessId || "35e8769e-0d4c-4a8b-aa76-ec1a68ccecc5",
+        recaptchaSiteKey: existingCfg.recaptchaSiteKey || "6LfRt44sAAAAACVTvFvGjoufmEcZqZk_pT4T_5Xd"
+      };
+      window.KORA_SITE_CONFIG = window.KORA_CONFIG;
+    })();
+  </script>
   <button class="mobile-menu-toggle" id="menu-toggle" aria-label="Menu">
     <span></span>
     <span></span>
@@ -70,10 +82,21 @@
           <div class="glass-card">
             <h3 class="card-title">Get Involved</h3>
             <p class="card-text" style="margin-bottom: 1.5rem;">Leave your message and we will connect with you.</p>
-            <form data-demo-form>
+            <form id="awareness-form" novalidate>
+              <div class="form-group">
+                <input type="text" id="aware-name" name="name" placeholder="Full name" required>
+              </div>
+              <div class="form-group">
+                <input type="email" id="aware-email" name="email" placeholder="Email address" required>
+              </div>
               <div class="form-group">
                 <textarea id="aware-msg" name="message" rows="3" placeholder="Tell us how you would like to help..." required></textarea>
               </div>
+              <div class="form-group" style="display: flex; justify-content: center;">
+                <div id="awareness-recaptcha-widget" class="g-recaptcha" data-sitekey=""></div>
+              </div>
+              <p id="awareness-captcha-error" style="display:none; color:#ef4444; text-align:center; margin-top:-0.5rem; margin-bottom:0.5rem;">Please complete the CAPTCHA.</p>
+              <p id="awareness-form-message" style="text-align:center; margin-top:0.5rem;"></p>
               <button type="submit" class="btn-submit">Send Message</button>
             </form>
           </div>
@@ -99,5 +122,109 @@
 
   <div id="toast" class="toast"></div>
   <script src="assets/js/main.js"></script>
+  <script>
+    (function () {
+      const cfg = window.KORA_CONFIG || window.KORA_SITE_CONFIG || {};
+      const apiBaseUrl = (cfg.apiBaseUrl || "").replace(/\/+$/, "");
+      const businessId = cfg.businessId;
+      const recaptchaSiteKey = (cfg.recaptchaSiteKey || "").trim();
+
+      const form = document.getElementById("awareness-form");
+      const msgEl = document.getElementById("awareness-form-message");
+      const captchaError = document.getElementById("awareness-captcha-error");
+      const recaptchaWidget = document.getElementById("awareness-recaptcha-widget");
+      let recaptchaWidgetId = null;
+      if (!form) return;
+
+      function renderRecaptchaWidget() {
+        if (!recaptchaWidget || !recaptchaSiteKey || typeof grecaptcha === "undefined") {
+          return;
+        }
+        if (recaptchaWidgetId !== null) return;
+        recaptchaWidgetId = grecaptcha.render("awareness-recaptcha-widget", {
+          sitekey: recaptchaSiteKey
+        });
+      }
+
+      if (!recaptchaSiteKey && recaptchaWidget) {
+        recaptchaWidget.style.display = "none";
+      }
+      renderRecaptchaWidget();
+      window.onAwarenessRecaptchaLoad = renderRecaptchaWidget;
+
+      function showMessage(text, color) {
+        if (!msgEl) return;
+        msgEl.textContent = text || "";
+        msgEl.style.color = color || "#94a3b8";
+      }
+
+      function isEmailValid(email) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      }
+
+      form.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        if (captchaError) captchaError.style.display = "none";
+        showMessage("", "");
+
+        const name = (document.getElementById("aware-name")?.value || "").trim();
+        const email = (document.getElementById("aware-email")?.value || "").trim();
+        const message = (document.getElementById("aware-msg")?.value || "").trim();
+
+        if (!name || !isEmailValid(email) || !message) {
+          showMessage("Please enter your name, valid email, and message.", "#ef4444");
+          return;
+        }
+
+        if (!apiBaseUrl || !businessId || !recaptchaSiteKey) {
+          showMessage("Form temporarily unavailable. Please contact us directly.", "#ef4444");
+          return;
+        }
+
+        let captchaToken = "";
+        if (typeof grecaptcha !== "undefined") {
+          captchaToken = grecaptcha.getResponse(recaptchaWidgetId !== null ? recaptchaWidgetId : undefined);
+        }
+        if (!captchaToken) {
+          if (captchaError) captchaError.style.display = "block";
+          showMessage("Please complete the CAPTCHA.", "#ef4444");
+          return;
+        }
+
+        showMessage("Sending...", "#06b6d4");
+        try {
+          const response = await fetch(apiBaseUrl + "/api/v1/public/forms/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              business_id: businessId,
+              form_type: "awareness",
+              form_data: {
+                full_name: name,
+                email: email,
+                message: message
+              },
+              submitter_email: email,
+              captcha_token: captchaToken
+            })
+          });
+
+          if (!response.ok) throw new Error("Submission failed");
+
+          showMessage("Thank you! Your message has been sent successfully.", "#22c55e");
+          form.reset();
+          if (typeof grecaptcha !== "undefined") {
+            if (recaptchaWidgetId !== null) {
+              grecaptcha.reset(recaptchaWidgetId);
+            } else {
+              grecaptcha.reset();
+            }
+          }
+        } catch (_err) {
+          showMessage("Something went wrong. Please try again or contact us directly.", "#ef4444");
+        }
+      });
+    })();
+  </script>
 </body>
 </html>

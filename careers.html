@@ -15,6 +15,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@400&family=Roboto:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/css/style.css">
+  <script src="https://www.google.com/recaptcha/api.js" async defer></script>
 </head>
 <body>
   <button class="mobile-menu-toggle" id="menu-toggle" aria-label="Menu">
@@ -71,12 +72,36 @@
           <div class="glass-card">
             <h3 class="card-title">Submit Your Resume</h3>
             <p class="card-text" style="margin-bottom: 1.5rem;">Upload your resume and we will be in touch shortly.</p>
-            <form data-demo-form enctype="multipart/form-data">
+            <form id="careers-form" enctype="multipart/form-data" novalidate>
+              <div class="form-group">
+                <label for="fullName">Full Name</label>
+                <input type="text" id="fullName" name="fullName" required>
+              </div>
+              <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" required>
+              </div>
+              <div class="form-group">
+                <label for="phone">Phone Number</label>
+                <input type="tel" id="phone" name="phone">
+              </div>
+              <div class="form-group">
+                <label for="position">Position Applying For</label>
+                <input type="text" id="position" name="position" required>
+              </div>
               <div class="form-group">
                 <label for="resume">Upload Resume (PDF, DOC, DOCX)</label>
-                <input type="file" id="resume" name="resume" accept=".pdf,.doc,.docx" required>
+                <input type="file" id="resume" name="resume" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+              </div>
+              <div class="form-group">
+                <label for="message">Cover Letter / Message</label>
+                <textarea id="message" name="message" rows="4" required></textarea>
+              </div>
+              <div class="form-group">
+                <div class="g-recaptcha" data-sitekey="6LfRt44sAAAAACVTvFvGjoufmEcZqZk_pT4T_5Xd"></div>
               </div>
               <button type="submit" class="btn-submit">Send Resume</button>
+              <p id="careers-form-message" style="margin-top: 0.75rem;"></p>
             </form>
           </div>
         </div>
@@ -93,6 +118,83 @@
   </main>
 
   <div id="toast" class="toast"></div>
+  <script>
+    window.KORA_CONFIG = window.KORA_CONFIG || {};
+    window.KORA_CONFIG.apiBaseUrl = window.KORA_CONFIG.apiBaseUrl || "https://kora-agent.quseappdev.com";
+    window.KORA_CONFIG.businessId = window.KORA_CONFIG.businessId || "35e8769e-0d4c-4a8b-aa76-ec1a68ccecc5";
+    window.KORA_CONFIG.recaptchaSiteKey = window.KORA_CONFIG.recaptchaSiteKey || "6LfRt44sAAAAACVTvFvGjoufmEcZqZk_pT4T_5Xd";
+
+    (function () {
+      var form = document.getElementById("careers-form");
+      var msgEl = document.getElementById("careers-form-message");
+      if (!form || !msgEl) return;
+
+      function showMessage(message, isError) {
+        msgEl.textContent = message || "";
+        msgEl.style.color = isError ? "#ef4444" : "#16a34a";
+      }
+
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var fullName = (form.elements.fullName.value || "").trim();
+        var email = (form.elements.email.value || "").trim();
+        var phone = (form.elements.phone.value || "").trim();
+        var position = (form.elements.position.value || "").trim();
+        var message = (form.elements.message.value || "").trim();
+        var resumeFile = form.elements.resume.files && form.elements.resume.files[0] ? form.elements.resume.files[0] : null;
+        var captchaToken = window.grecaptcha ? window.grecaptcha.getResponse() : "";
+        var cfg = window.KORA_CONFIG || {};
+        var apiBaseUrl = (cfg.apiBaseUrl || "").replace(/\/+$/, "");
+        var businessId = cfg.businessId;
+
+        if (!fullName) return showMessage("Please enter your full name.", true);
+        if (!email || !/^\S+@\S+\.\S+$/.test(email)) return showMessage("Please enter a valid email address.", true);
+        if (!position) return showMessage("Please enter the position you are applying for.", true);
+        if (!message) return showMessage("Please enter your cover letter/message.", true);
+        if (!captchaToken) return showMessage("Please complete the reCAPTCHA.", true);
+        if (!apiBaseUrl || !businessId) return showMessage("Form is not configured correctly.", true);
+        if (resumeFile && resumeFile.size > (10 * 1024 * 1024)) return showMessage("Resume is too large. Max allowed size is 10MB.", true);
+
+        var payload = new FormData();
+        payload.append("business_id", businessId);
+        payload.append("form_type", "hiring");
+        payload.append("form_data", JSON.stringify({
+          fullName: fullName,
+          email: email,
+          phone: phone || null,
+          position: position,
+          message: message
+        }));
+        payload.append("submitter_email", email);
+        payload.append("captcha_token", captchaToken);
+        if (resumeFile) payload.append("attachment", resumeFile);
+
+        var submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) submitBtn.disabled = true;
+        showMessage("Submitting application...", false);
+
+        fetch(apiBaseUrl + "/api/v1/public/forms/submit-with-file", {
+          method: "POST",
+          body: payload
+        })
+          .then(function (res) {
+            if (!res.ok) throw new Error("Request failed");
+            return res.json();
+          })
+          .then(function () {
+            showMessage("Thank you! Your application has been submitted.", false);
+            form.reset();
+            if (window.grecaptcha) window.grecaptcha.reset();
+          })
+          .catch(function () {
+            showMessage("An error occurred. Please try again later.", true);
+          })
+          .finally(function () {
+            if (submitBtn) submitBtn.disabled = false;
+          });
+      });
+    })();
+  </script>
   <script src="assets/js/main.js"></script>
 </body>
 </html>
