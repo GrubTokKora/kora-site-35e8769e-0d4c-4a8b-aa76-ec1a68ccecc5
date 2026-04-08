@@ -55,11 +55,13 @@
   
   <!-- Kora Site Config -->
   <script>
-    window.KORA_SITE_CONFIG = {
-      apiBaseUrl: "",
+    window.KORA_CONFIG = {
+      apiBaseUrl: "https://kora-agent.quseappdev.com",
       businessId: "35e8769e-0d4c-4a8b-aa76-ec1a68ccecc5",
-      recaptchaSiteKey: ""
+      recaptchaSiteKey: "6LfRt44sAAAAACVTvFvGjoufmEcZqZk_pT4T_5Xd"
     };
+    // Backward compatibility for older templates.
+    window.KORA_SITE_CONFIG = window.KORA_CONFIG;
   </script>
 
   <!-- Navigation -->
@@ -316,11 +318,13 @@
       mobileMenu.classList.toggle('hidden');
     });
     
+    const getKoraConfig = () => window.KORA_CONFIG || window.KORA_SITE_CONFIG || {};
+
     // Contact form handling
     document.getElementById('contact-form').addEventListener('submit', async function(e) {
       e.preventDefault();
       
-      const cfg = window.KORA_SITE_CONFIG || {};
+      const cfg = getKoraConfig();
       const apiBaseUrl = (cfg.apiBaseUrl || '').replace(/\/+$/, '');
       const businessId = cfg.businessId;
       const recaptchaSiteKey = cfg.recaptchaSiteKey;
@@ -406,6 +410,24 @@
         msgEl.classList.add('text-red-400');
       }
     });
+
+    // Sync reCAPTCHA widget with runtime config.
+    (function configureRecaptchaWidget() {
+      const cfg = getKoraConfig();
+      const recaptchaSiteKey = (cfg.recaptchaSiteKey || '').trim();
+      const widget = document.getElementById('recaptcha-widget');
+      const captchaError = document.getElementById('captcha-error');
+      if (!widget) return;
+
+      if (!recaptchaSiteKey) {
+        widget.classList.add('hidden');
+        if (captchaError) captchaError.classList.add('hidden');
+        return;
+      }
+
+      widget.setAttribute('data-sitekey', recaptchaSiteKey);
+      widget.classList.remove('hidden');
+    })();
   </script>
 </body>
 </html>
